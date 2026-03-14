@@ -1,0 +1,911 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Distributed Systems — Interactive Visualization</title>
+<style>
+  @import url('https://fonts.googleapis.com/css2?family=Space+Mono:wght@400;700&family=Syne:wght@400;600;800&display=swap');
+
+  :root {
+    --bg:      #07090f;
+    --bg2:     #0d1220;
+    --panel:   #0f1623;
+    --border:  #1f2d45;
+    --text:    #c8d8f0;
+    --muted:   #4a6080;
+    --accent:  #38bdf8;
+    --green:   #4ade80;
+    --orange:  #fb923c;
+    --red:     #f87171;
+    --purple:  #c084fc;
+    --yellow:  #fbbf24;
+    --indigo:  #818cf8;
+    font-family: 'Syne', sans-serif;
+  }
+  *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+  body { background: var(--bg); color: var(--text); min-height: 100vh; overflow-x: hidden; }
+
+  /* ── HEADER ── */
+  header {
+    padding: 1.4rem 2.5rem;
+    border-bottom: 1px solid var(--border);
+    background: linear-gradient(180deg,#0d1525 0%,transparent 100%);
+    display: flex; align-items: baseline; gap: 1.4rem; flex-wrap: wrap;
+  }
+  header h1 {
+    font-size: clamp(1.5rem,3vw,2.2rem); font-weight: 800; letter-spacing:-.5px;
+    background: linear-gradient(135deg,#38bdf8,#818cf8);
+    -webkit-background-clip: text; -webkit-text-fill-color: transparent;
+  }
+  header p { font-family:'Space Mono',monospace; font-size:.72rem; color:var(--muted); letter-spacing:.08em; }
+
+  /* ── INTRO ── */
+  #intro { display:grid; grid-template-columns:1fr 1fr; border-bottom:1px solid var(--border); }
+  #intro .canvas-wrap { position:relative; height:240px; }
+  #intro canvas { width:100%; height:100%; }
+  #intro .label {
+    position:absolute; bottom:10px; left:50%; transform:translateX(-50%);
+    font-family:'Space Mono',monospace; font-size:.65rem; color:var(--muted); letter-spacing:.1em; text-transform:uppercase;
+  }
+  #intro-text {
+    padding:1.8rem 2.4rem; display:flex; flex-direction:column; justify-content:center; gap:.9rem;
+    background:var(--bg2); border-left:1px solid var(--border);
+  }
+  #intro-text .quote {
+    font-size:clamp(1rem,1.5vw,1.2rem); line-height:1.75; color:var(--text);
+    border-left:3px solid var(--accent); padding-left:1.1rem;
+  }
+  #intro-text .sub { font-family:'Space Mono',monospace; font-size:.75rem; color:var(--muted); line-height:1.9; }
+
+  /* ── NAV ── */
+  #nav { display:flex; border-bottom:1px solid var(--border); overflow-x:auto; scrollbar-width:none; background:var(--bg2); }
+  #nav::-webkit-scrollbar { display:none; }
+  #nav button {
+    padding:1rem 1.6rem; background:none; border:none; border-bottom:3px solid transparent;
+    color:var(--muted); cursor:pointer; font-family:'Syne',sans-serif; font-size:.85rem;
+    font-weight:700; white-space:nowrap; transition:color .2s,border-color .2s; letter-spacing:.04em;
+  }
+  #nav button.active { color:var(--accent); border-bottom-color:var(--accent); }
+  #nav button:hover:not(.active) { color:var(--text); }
+
+  /* ── SECTIONS — 68% canvas / 32% info ── */
+  .section { display:none; grid-template-columns:1.6fr 1fr; min-height:580px; }
+  .section.active { display:grid; }
+  .section canvas { width:100%; height:100%; display:block; }
+  .canvas-container {
+    position:relative;
+    background:radial-gradient(ellipse at 50% 50%,#0d1a2e 0%,var(--bg) 72%);
+    border-right:1px solid var(--border);
+  }
+
+  /* ── INFO PANEL — larger text, more space ── */
+  .info-panel {
+    padding:2.2rem 2rem; display:flex; flex-direction:column; gap:1.5rem;
+    background:var(--panel); overflow-y:auto;
+  }
+  .info-panel h2 { font-size:1.6rem; font-weight:800; letter-spacing:-.3px; line-height:1.2; }
+  .info-panel .pill {
+    display:inline-block; font-family:'Space Mono',monospace; font-size:.68rem;
+    letter-spacing:.12em; padding:.28rem .75rem; border-radius:3px; margin-bottom:.5rem;
+  }
+  .info-panel .desc { font-size:.97rem; line-height:1.9; color:#9db8d8; }
+  .info-panel .block {
+    background:var(--bg2); border:1px solid var(--border); border-radius:6px; padding:1.2rem 1.4rem;
+  }
+  .info-panel .block strong {
+    font-family:'Space Mono',monospace; font-size:.7rem; letter-spacing:.1em; display:block; margin-bottom:.7rem;
+  }
+  .info-panel .block ul { padding-left:1.1rem; font-size:.92rem; line-height:2.15; color:#8aa8c8; }
+  .info-panel .block ul li b { color:#c8d8f0; }
+  .info-panel .example {
+    font-family:'Space Mono',monospace; font-size:.76rem; color:var(--muted);
+    border-left:2px solid var(--border); padding-left:.9rem; line-height:1.85;
+  }
+  .info-panel .example span { color:var(--green); }
+
+  .s-arch  h2,.s-arch  .pill { color:var(--accent); background:#1e3a5022; }
+  .s-ipc   h2,.s-ipc   .pill { color:var(--green);  background:#1a3a2522; }
+  .s-sync  h2,.s-sync  .pill { color:var(--orange); background:#3a2a1022; }
+  .s-fault h2,.s-fault .pill { color:var(--red);    background:#3a1a1a22; }
+  .s-store h2,.s-store .pill { color:var(--purple); background:#2a1a3a22; }
+
+  /* ── LEGEND ── */
+  .legend {
+    position:absolute; top:14px; right:16px; font-family:'Space Mono',monospace;
+    font-size:.64rem; display:flex; flex-direction:column; gap:7px;
+  }
+  .legend-item { display:flex; align-items:center; gap:8px; }
+  .legend-dot { width:10px; height:10px; border-radius:50%; flex-shrink:0; }
+
+  /* ── IPC MODE TABS ── */
+  #ipc-mode-bar {
+    position:absolute; bottom:14px; left:50%; transform:translateX(-50%);
+    display:flex; gap:6px; z-index:10;
+  }
+  .ipc-tab {
+    padding:.32rem .85rem; font-family:'Space Mono',monospace; font-size:.64rem;
+    border:1px solid var(--border); border-radius:4px; color:var(--muted);
+    background:rgba(7,9,15,.8); cursor:pointer; letter-spacing:.06em; transition:all .2s;
+  }
+  .ipc-tab.active { color:var(--green); border-color:var(--green); background:rgba(74,222,128,.1); }
+  .ipc-tab:hover:not(.active) { color:var(--text); }
+
+  @media(max-width:820px){
+    #intro { grid-template-columns:1fr; }
+    #intro-text { border-left:none; border-top:1px solid var(--border); }
+    .section { grid-template-columns:1fr; }
+    .canvas-container { height:400px; border-right:none; border-bottom:1px solid var(--border); }
+  }
+</style>
+</head>
+<body>
+
+<header>
+  <h1>Distributed Systems</h1>
+  <p>// Interactive Classroom Visualization · CS Fundamentals</p>
+</header>
+
+<!-- INTRO -->
+<section id="intro">
+  <div style="display:grid;grid-template-columns:1fr 1fr;border-right:1px solid var(--border)">
+    <div class="canvas-wrap" style="border-right:1px solid var(--border)">
+      <canvas id="c-central"></canvas>
+      <div class="label">Centralized</div>
+    </div>
+    <div class="canvas-wrap">
+      <canvas id="c-dist"></canvas>
+      <div class="label">Distributed</div>
+    </div>
+  </div>
+  <div id="intro-text">
+    <div class="quote">
+      "A distributed system is a collection of independent computers that appear to users as a single coherent system."
+      <div style="margin-top:.45rem;font-size:.72rem;color:var(--muted);font-family:'Space Mono',monospace">— Andrew S. Tanenbaum</div>
+    </div>
+    <p class="sub">
+      ↳ No shared memory between nodes<br>
+      ↳ Communication via message passing<br>
+      ↳ Concurrent execution across machines<br>
+      ↳ Partial failures are expected &amp; handled<br>
+      ↳ Goal: transparency &amp; fault tolerance
+    </p>
+  </div>
+</section>
+
+<nav id="nav">
+  <button class="active" data-sec="arch">A · Architectures</button>
+  <button data-sec="ipc">B · IPC</button>
+  <button data-sec="sync">C · Synchronization</button>
+  <button data-sec="fault">D · Fault Tolerance</button>
+  <button data-sec="store">E · Distributed Storage</button>
+</nav>
+
+<!-- SECTION A -->
+<div id="sec-arch" class="section active s-arch">
+  <div class="canvas-container">
+    <canvas id="c-arch"></canvas>
+    <div class="legend">
+      <div class="legend-item"><div class="legend-dot" style="background:#38bdf8"></div><span style="color:#4a6080">Server Node</span></div>
+      <div class="legend-item"><div class="legend-dot" style="background:#818cf8"></div><span style="color:#4a6080">Client Node</span></div>
+      <div class="legend-item"><div class="legend-dot" style="background:#fb923c"></div><span style="color:#4a6080">Load Balancer</span></div>
+      <div class="legend-item"><div class="legend-dot" style="background:#4ade80"></div><span style="color:#4a6080">Request / Data</span></div>
+    </div>
+  </div>
+  <div class="info-panel">
+    <div><div class="pill">SECTION A</div><h2>Distributed Architectures</h2></div>
+    <p class="desc">How nodes are arranged and interact defines the system's scalability, resilience, and complexity.</p>
+    <div class="block">
+      <strong style="color:#38bdf8">// KEY PATTERNS</strong>
+      <ul>
+        <li><b>Client–Server</b> — clients request services from dedicated servers</li>
+        <li><b>Peer-to-Peer</b> — every node is both client and server</li>
+        <li><b>Cluster</b> — tightly coupled nodes behind a load balancer</li>
+        <li><b>Microservices</b> — decomposed services talking over APIs</li>
+      </ul>
+    </div>
+    <p class="example">↳ Real world: <span>Google Web Servers</span> use client-server at massive scale; <span>BitTorrent</span> is pure peer-to-peer.</p>
+  </div>
+</div>
+
+<!-- SECTION B — IPC -->
+<div id="sec-ipc" class="section s-ipc">
+  <div class="canvas-container">
+    <canvas id="c-ipc"></canvas>
+    <div id="ipc-mode-bar">
+      <button class="ipc-tab active" data-mode="0">Direct Msg</button>
+      <button class="ipc-tab" data-mode="1">RPC</button>
+      <button class="ipc-tab" data-mode="2">Msg Queue</button>
+      <button class="ipc-tab" data-mode="3">Pub / Sub</button>
+    </div>
+    <div class="legend">
+      <div class="legend-item"><div class="legend-dot" style="background:#38bdf8"></div><span style="color:#4a6080">Process / Service</span></div>
+      <div class="legend-item"><div class="legend-dot" style="background:#4ade80"></div><span style="color:#4a6080">Message / Call</span></div>
+      <div class="legend-item"><div class="legend-dot" style="background:#fbbf24"></div><span style="color:#4a6080">Queue / Broker</span></div>
+      <div class="legend-item"><div class="legend-dot" style="background:#f87171"></div><span style="color:#4a6080">Response</span></div>
+    </div>
+  </div>
+  <div class="info-panel">
+    <div><div class="pill">SECTION B</div><h2>Interprocess Communication</h2></div>
+    <p class="desc">Distributed nodes share <b style="color:#c8d8f0">no memory</b>. All interaction happens via network messages. Click tabs to explore 4 core IPC patterns.</p>
+    <div class="block">
+      <strong style="color:#4ade80">// 4 PATTERNS</strong>
+      <ul>
+        <li><b>Direct Msg</b> — raw send/recv over sockets; tight coupling</li>
+        <li><b>RPC / gRPC</b> — call remote function, get a response back</li>
+        <li><b>Message Queue</b> — async buffer decouples sender &amp; receiver</li>
+        <li><b>Pub / Sub</b> — publisher broadcasts to many subscribers</li>
+      </ul>
+    </div>
+    <p class="example">↳ Real world: <span>Netflix</span> uses Kafka (queue); <span>Google</span> uses gRPC internally; <span>AWS SNS</span> is Pub/Sub.</p>
+  </div>
+</div>
+
+<!-- SECTION C -->
+<div id="sec-sync" class="section s-sync">
+  <div class="canvas-container">
+    <canvas id="c-sync"></canvas>
+    <div class="legend">
+      <div class="legend-item"><div class="legend-dot" style="background:#38bdf8"></div><span style="color:#4a6080">Process</span></div>
+      <div class="legend-item"><div class="legend-dot" style="background:#fb923c"></div><span style="color:#4a6080">Lock / Leader</span></div>
+      <div class="legend-item"><div class="legend-dot" style="background:#4ade80"></div><span style="color:#4a6080">Access Granted</span></div>
+    </div>
+  </div>
+  <div class="info-panel">
+    <div><div class="pill">SECTION C</div><h2>Synchronization &amp; Coordination</h2></div>
+    <p class="desc">No global clock exists in a distributed system. Safely ordering events and sharing resources requires careful algorithms.</p>
+    <div class="block">
+      <strong style="color:#fb923c">// CONCEPTS</strong>
+      <ul>
+        <li><b>Logical Clocks</b> — Lamport timestamps order events causally</li>
+        <li><b>Mutual Exclusion</b> — distributed locks prevent race conditions</li>
+        <li><b>Leader Election</b> — Raft / Paxos elect one coordinator node</li>
+        <li><b>Consensus</b> — all nodes agree on a value despite failures</li>
+      </ul>
+    </div>
+    <p class="example">↳ Real world: <span>Apache ZooKeeper</span> handles coordination; <span>etcd</span> (Kubernetes) uses Raft consensus.</p>
+  </div>
+</div>
+
+<!-- SECTION D -->
+<div id="sec-fault" class="section s-fault">
+  <div class="canvas-container">
+    <canvas id="c-fault"></canvas>
+    <div class="legend">
+      <div class="legend-item"><div class="legend-dot" style="background:#38bdf8"></div><span style="color:#4a6080">Active Node</span></div>
+      <div class="legend-item"><div class="legend-dot" style="background:#f87171"></div><span style="color:#4a6080">Failed Node</span></div>
+      <div class="legend-item"><div class="legend-dot" style="background:#4ade80"></div><span style="color:#4a6080">Redistributed Task</span></div>
+    </div>
+  </div>
+  <div class="info-panel">
+    <div><div class="pill">SECTION D</div><h2>Fault Tolerance &amp; Load Balancing</h2></div>
+    <p class="desc">Partial failures are unavoidable at scale. The system must detect them and gracefully continue without interruption.</p>
+    <div class="block">
+      <strong style="color:#f87171">// STRATEGIES</strong>
+      <ul>
+        <li><b>Replication</b> — copies on multiple nodes; no single point of failure</li>
+        <li><b>Heartbeating</b> — periodic signals detect dead nodes quickly</li>
+        <li><b>Checkpointing</b> — save state periodically for recovery</li>
+        <li><b>Load Balancing</b> — spread requests evenly across live nodes</li>
+      </ul>
+    </div>
+    <p class="example">↳ Real world: <span>AWS Auto Scaling</span> replaces failed EC2 instances; <span>Hadoop YARN</span> reschedules tasks on failure.</p>
+  </div>
+</div>
+
+<!-- SECTION E -->
+<div id="sec-store" class="section s-store">
+  <div class="canvas-container">
+    <canvas id="c-store"></canvas>
+    <div class="legend">
+      <div class="legend-item"><div class="legend-dot" style="background:#38bdf8"></div><span style="color:#4a6080">NameNode</span></div>
+      <div class="legend-item"><div class="legend-dot" style="background:#c084fc"></div><span style="color:#4a6080">Storage Node</span></div>
+      <div class="legend-item"><div class="legend-dot" style="background:#4ade80"></div><span style="color:#4a6080">Write / Read</span></div>
+      <div class="legend-item"><div class="legend-dot" style="background:#e879f9"></div><span style="color:#4a6080">Replication</span></div>
+    </div>
+  </div>
+  <div class="info-panel">
+    <div><div class="pill">SECTION E</div><h2>Distributed Storage &amp; Big Data</h2></div>
+    <p class="desc">Petabytes of data are split into blocks spread across many nodes. Replication ensures no data loss on failure.</p>
+    <div class="block">
+      <strong style="color:#c084fc">// SYSTEMS</strong>
+      <ul>
+        <li><b>HDFS</b> — files split into 128 MB blocks, replicated 3×</li>
+        <li><b>MapReduce</b> — move computation to data, not data to compute</li>
+        <li><b>NoSQL</b> — Cassandra / DynamoDB scale horizontally</li>
+        <li><b>Object Storage</b> — S3 / GCS for unstructured data at scale</li>
+      </ul>
+    </div>
+    <p class="example">↳ Real world: <span>Hadoop / HDFS</span> powers Yahoo &amp; Facebook analytics; <span>Google Bigtable</span> stores the Search index.</p>
+  </div>
+</div>
+
+<script>
+/* ═══════════════════════════════════════════
+   UTILITIES
+═══════════════════════════════════════════ */
+function initCanvas(id) {
+  const c = document.getElementById(id);
+  const p = c.parentElement;
+  c.width  = p.clientWidth  || 640;
+  c.height = p.clientHeight || 580;
+  return { canvas:c, ctx:c.getContext('2d'), W:c.width, H:c.height };
+}
+function lerp(a,b,t){ return a+(b-a)*t; }
+function hr(h){ return `${parseInt(h.slice(1,3),16)},${parseInt(h.slice(3,5),16)},${parseInt(h.slice(5,7),16)}`; }
+function rgba(col,a){ return `rgba(${hr(col)},${a})`; }
+
+const C={
+  blue:'#38bdf8',green:'#4ade80',orange:'#fb923c',
+  red:'#f87171',purple:'#c084fc',yellow:'#fbbf24',
+  indigo:'#818cf8',pink:'#e879f9',muted:'#1f2d45'
+};
+
+function drawNode(ctx,x,y,r,color,label,pulse=0){
+  const g=ctx.createRadialGradient(x,y,0,x,y,r*3);
+  g.addColorStop(0,rgba(color,.16+pulse*.2)); g.addColorStop(1,rgba(color,0));
+  ctx.beginPath(); ctx.arc(x,y,r*3,0,Math.PI*2); ctx.fillStyle=g; ctx.fill();
+  ctx.beginPath(); ctx.arc(x,y,r,0,Math.PI*2);
+  ctx.strokeStyle=color; ctx.lineWidth=1.8+pulse*2;
+  ctx.fillStyle=rgba(color,.08+pulse*.1); ctx.fill(); ctx.stroke();
+  if(label){
+    ctx.font='11px "Space Mono",monospace'; ctx.fillStyle=rgba(color,.9); ctx.textAlign='center';
+    ctx.fillText(label,x,y+r+16);
+  }
+}
+function drawLink(ctx,x1,y1,x2,y2,color,alpha=.4,w=1){
+  ctx.beginPath(); ctx.moveTo(x1,y1); ctx.lineTo(x2,y2);
+  ctx.strokeStyle=rgba(color,alpha); ctx.lineWidth=w; ctx.stroke();
+}
+function drawPacket(ctx,x1,y1,x2,y2,t,color,size=6){
+  const x=lerp(x1,x2,t), y=lerp(y1,y2,t);
+  ctx.shadowColor=color; ctx.shadowBlur=14;
+  ctx.beginPath(); ctx.arc(x,y,size,0,Math.PI*2); ctx.fillStyle=color; ctx.fill();
+  ctx.shadowBlur=0;
+  for(let i=1;i<=10;i++){
+    const tt=Math.max(0,t-i*.012);
+    const tx=lerp(x1,x2,tt), ty=lerp(y1,y2,tt);
+    ctx.beginPath(); ctx.arc(tx,ty,size*(1-i/10)*.6,0,Math.PI*2);
+    ctx.fillStyle=rgba(color,(1-i/10)*.3); ctx.fill();
+  }
+}
+function drawArrow(ctx,x1,y1,x2,y2,color,alpha=.85){
+  const ang=Math.atan2(y2-y1,x2-x1), len=10;
+  ctx.beginPath();
+  ctx.moveTo(x2,y2);
+  ctx.lineTo(x2-len*Math.cos(ang-.4),y2-len*Math.sin(ang-.4));
+  ctx.lineTo(x2-len*Math.cos(ang+.4),y2-len*Math.sin(ang+.4));
+  ctx.closePath(); ctx.fillStyle=rgba(color,alpha); ctx.fill();
+}
+function lbl(ctx,text,x,y,color,size=11,align='center'){
+  ctx.font=`${size}px "Space Mono",monospace`;
+  ctx.fillStyle=color; ctx.textAlign=align; ctx.fillText(text,x,y);
+}
+function box(ctx,x,y,w,h,color,alpha=.08,borderAlpha=.4,borderW=1.5){
+  ctx.fillStyle=rgba(color,alpha); ctx.fillRect(x,y,w,h);
+  ctx.strokeStyle=rgba(color,borderAlpha); ctx.lineWidth=borderW; ctx.strokeRect(x,y,w,h);
+}
+
+/* ═══════════════════════════════════════════
+   INTRO — CENTRALIZED
+═══════════════════════════════════════════ */
+(function(){
+  const{canvas,ctx,W,H}=initCanvas('c-central'); let t=0;
+  const cx=W/2,cy=H/2;
+  const cli=[{x:cx-85,y:cy-65},{x:cx+85,y:cy-65},{x:cx-85,y:cy+65},{x:cx+85,y:cy+65},{x:cx,y:cy-95}];
+  function fr(){
+    ctx.clearRect(0,0,W,H); t+=.012;
+    cli.forEach(c=>drawLink(ctx,cx,cy,c.x,c.y,C.muted,.6,1));
+    cli.forEach((c,i)=>{
+      const pt=(t*.7+i*.2)%1;
+      if(pt<.5)drawPacket(ctx,c.x,c.y,cx,cy,pt*2,C.green,4);
+      else drawPacket(ctx,cx,cy,c.x,c.y,(pt-.5)*2,C.blue,4);
+    });
+    drawNode(ctx,cx,cy,22,C.orange,'Server',(Math.sin(t*3)+1)*.5);
+    cli.forEach((c,i)=>drawNode(ctx,c.x,c.y,11,C.blue,`C${i+1}`));
+    requestAnimationFrame(fr);
+  }
+  fr();
+})();
+
+/* ═══════════════════════════════════════════
+   INTRO — DISTRIBUTED
+═══════════════════════════════════════════ */
+(function(){
+  const{canvas,ctx,W,H}=initCanvas('c-dist'); let t=0;
+  const nodes=[{x:W*.25,y:H*.25},{x:W*.75,y:H*.25},{x:W*.5,y:H*.5},{x:W*.2,y:H*.7},{x:W*.8,y:H*.7},{x:W*.5,y:H*.12}];
+  const edges=[[0,1],[0,2],[1,2],[2,3],[2,4],[3,4],[0,3],[1,4],[5,0],[5,1]];
+  const pkts=edges.map(()=>({t:Math.random(),speed:.003+Math.random()*.004}));
+  function fr(){
+    ctx.clearRect(0,0,W,H); t+=.01;
+    edges.forEach(([a,b])=>drawLink(ctx,nodes[a].x,nodes[a].y,nodes[b].x,nodes[b].y,C.muted,.5,1));
+    pkts.forEach((p,i)=>{p.t=(p.t+p.speed)%1; const[a,b]=edges[i]; drawPacket(ctx,nodes[a].x,nodes[a].y,nodes[b].x,nodes[b].y,p.t,C.green,4);});
+    nodes.forEach((n,i)=>drawNode(ctx,n.x,n.y,13,C.blue,`N${i+1}`,i===2?(Math.sin(t*2)+1)*.5:0));
+    requestAnimationFrame(fr);
+  }
+  fr();
+})();
+
+/* ═══════════════════════════════════════════
+   SECTION A — ARCHITECTURES
+═══════════════════════════════════════════ */
+(function(){
+  const{canvas,ctx,W,H}=initCanvas('c-arch');
+  let t=0,mode=0,mt=0;
+  const names=['Client–Server','Peer-to-Peer','Cluster Architecture'];
+
+  function clientServer(){
+    const srv={x:W/2,y:H*.35};
+    const cli=[{x:W*.14,y:H*.74},{x:W*.36,y:H*.82},{x:W*.64,y:H*.82},{x:W*.86,y:H*.74}];
+    cli.forEach(c=>drawLink(ctx,srv.x,srv.y,c.x,c.y,C.blue,.2,1));
+    cli.forEach((c,i)=>{
+      const pt=(t*.5+i*.25)%1,going=pt<.5,pp=going?pt*2:(pt-.5)*2;
+      drawPacket(ctx,going?c.x:srv.x,going?c.y:srv.y,going?srv.x:c.x,going?srv.y:c.y,pp,going?C.green:C.blue,6);
+    });
+    drawNode(ctx,srv.x,srv.y,24,C.orange,'Server',(Math.sin(t*3)+1)*.5);
+    cli.forEach((c,i)=>drawNode(ctx,c.x,c.y,15,C.indigo,`Client ${i+1}`));
+    lbl(ctx,'Clients send requests → Server processes → returns response',W/2,H*.14,rgba(C.blue,.5),10);
+  }
+  function p2p(){
+    const pts=Array.from({length:6},(_,i)=>({x:W/2+Math.cos(i/6*Math.PI*2)*W*.33,y:H/2+Math.sin(i/6*Math.PI*2)*H*.38}));
+    for(let i=0;i<6;i++)for(let j=i+1;j<6;j++)drawLink(ctx,pts[i].x,pts[i].y,pts[j].x,pts[j].y,C.muted,.22,1);
+    [[0,3],[1,4],[2,5]].forEach(([a,b],k)=>{
+      const pt=(t*.4+k*.33)%1,going=pt<.5,pp=going?pt*2:(pt-.5)*2;
+      drawPacket(ctx,going?pts[a].x:pts[b].x,going?pts[a].y:pts[b].y,going?pts[b].x:pts[a].x,going?pts[b].y:pts[a].y,pp,C.green,6);
+    });
+    pts.forEach((p,i)=>drawNode(ctx,p.x,p.y,15,C.blue,`Peer ${i+1}`));
+    lbl(ctx,'Every node is simultaneously Client AND Server',W/2,H*.1,rgba(C.green,.5),10);
+  }
+  function cluster(){
+    const lb={x:W/2,y:H*.26},client={x:W/2,y:H*.08};
+    const ws=[{x:W*.16,y:H*.62},{x:W*.34,y:H*.74},{x:W*.52,y:H*.67},{x:W*.7,y:H*.74},{x:W*.88,y:H*.62}];
+    drawLink(ctx,client.x,client.y,lb.x,lb.y,C.indigo,.5,2);
+    ws.forEach(w=>drawLink(ctx,lb.x,lb.y,w.x,w.y,C.blue,.28,1));
+    for(let i=0;i<ws.length;i++)for(let j=i+1;j<ws.length;j++)drawLink(ctx,ws[i].x,ws[i].y,ws[j].x,ws[j].y,C.muted,.1,1);
+    ws.forEach((w,i)=>drawPacket(ctx,lb.x,lb.y,w.x,w.y,(t*.4+i*.2)%1,C.blue,6));
+    drawNode(ctx,client.x,client.y,12,C.indigo,'Client');
+    drawNode(ctx,lb.x,lb.y,20,C.orange,'Load Balancer',(Math.sin(t*4)+1)*.5);
+    ws.forEach((w,i)=>drawNode(ctx,w.x,w.y,15,C.blue,`Worker ${i+1}`));
+    lbl(ctx,'Load balancer distributes work across worker nodes',W/2,H*.92,rgba(C.orange,.5),10);
+  }
+
+  function fr(){
+    ctx.clearRect(0,0,W,H); t+=.008; mt++;
+    if(mt>280){mt=0;mode=(mode+1)%3;}
+    box(ctx,W/2-130,H*.93,260,24,C.blue,.08,.2);
+    lbl(ctx,names[mode],W/2,H*.93+16,rgba(C.blue,.9),11);
+    if(mode===0)clientServer(); else if(mode===1)p2p(); else cluster();
+    requestAnimationFrame(fr);
+  }
+  fr();
+})();
+
+/* ═══════════════════════════════════════════
+   SECTION B — IPC  (4 animated modes)
+═══════════════════════════════════════════ */
+(function(){
+  const{canvas,ctx,W,H}=initCanvas('c-ipc');
+  let t=0, ipcMode=0, pkts=[], pt=0, autoT=0;
+
+  window._setIpcMode=function(m){ ipcMode=m; pkts=[]; pt=0; autoT=0; };
+
+  /* ─ MODE 0: Direct Message Passing ─ */
+  function drawDirect(){
+    const A={x:W*.18,y:H*.48}, B={x:W*.82,y:H*.48};
+
+    // background zones
+    box(ctx,W*.05,H*.34,W*.22,H*.28,C.blue,.05,.2);
+    box(ctx,W*.73,H*.34,W*.22,H*.28,C.blue,.05,.2);
+    lbl(ctx,'MACHINE A',A.x,H*.38,rgba(C.blue,.4),9);
+    lbl(ctx,'MACHINE B',B.x,H*.38,rgba(C.blue,.4),9);
+
+    // direct arrow
+    drawLink(ctx,A.x+25,A.y,B.x-25,B.y,C.green,.4,2);
+    drawArrow(ctx,A.x+25,A.y,B.x-25,B.y,C.green);
+
+    // annotation bracket
+    lbl(ctx,'send(msg)',A.x,H*.56,rgba(C.green,.65),10);
+    lbl(ctx,'recv(msg)',B.x,H*.56,rgba(C.blue,.65),10);
+    lbl(ctx,'───── TCP Socket / Unix Pipe ─────',W/2,H*.43,rgba(C.green,.35),9);
+
+    // pros/cons
+    box(ctx,W*.1,H*.68,W*.8,H*.2,C.muted,.04,.15);
+    lbl(ctx,'⚡ Low latency, simple',W/2,H*.73,rgba(C.green,.7),10);
+    lbl(ctx,'⚠  Tight coupling — sender must know receiver address',W/2,H*.8,rgba(C.orange,.7),10);
+    lbl(ctx,'Used by: TCP sockets, Unix pipes, MPI',W/2,H*.87,rgba(C.muted,.9),9);
+
+    if(pt%40===0) pkts.push({x1:A.x+25,y1:A.y,x2:B.x-25,y2:B.y,t:0,col:C.green,lb:'msg{}'});
+    if(pt%65===0) pkts.push({x1:B.x-25,y1:B.y,x2:A.x+25,y2:A.y,t:0,col:C.blue,lb:'ack'});
+    drawNode(ctx,A.x,A.y,22,C.blue,'Process A');
+    drawNode(ctx,B.x,B.y,22,C.blue,'Process B');
+  }
+
+  /* ─ MODE 1: RPC ─ */
+  function drawRPC(){
+    const caller={x:W*.2,y:H*.46}, callee={x:W*.8,y:H*.46};
+    const ry1=H*.38, ry2=H*.55;
+
+    box(ctx,W*.05,H*.32,W*.22,H*.28,C.blue,.05,.2);
+    box(ctx,W*.73,H*.32,W*.22,H*.28,C.blue,.05,.2);
+    lbl(ctx,'CALLER',caller.x,H*.36,rgba(C.blue,.4),9);
+    lbl(ctx,'CALLEE (Remote)',callee.x,H*.36,rgba(C.blue,.4),9);
+
+    // request arrow
+    drawLink(ctx,caller.x+25,ry1,callee.x-25,ry1,C.green,.45,2);
+    drawArrow(ctx,caller.x+25,ry1,callee.x-25,ry1,C.green);
+    lbl(ctx,'① call: getUser(id=42)',W/2,ry1-10,rgba(C.green,.7),10);
+
+    // response arrow
+    drawLink(ctx,callee.x-25,ry2,caller.x+25,ry2,C.red,.45,2);
+    drawArrow(ctx,callee.x-25,ry2,caller.x+25,ry2,C.red);
+    lbl(ctx,'② return: {name:"Alice"}',W/2,ry2+14,rgba(C.red,.7),10);
+
+    // blocked indicator
+    const blocked=(t%3)<1.5;
+    if(blocked){
+      box(ctx,caller.x-30,H*.6,60,20,C.orange,.1,.3);
+      lbl(ctx,'⏳ WAITING',caller.x,H*.6+13,rgba(C.orange,.8),9);
+    }
+
+    box(ctx,W*.1,H*.7,W*.8,H*.2,C.muted,.04,.15);
+    lbl(ctx,'Caller BLOCKS until response returns (synchronous)',W/2,H*.75,rgba(C.orange,.7),10);
+    lbl(ctx,'Looks like a local function call — but goes over network!',W/2,H*.82,rgba(C.green,.6),10);
+    lbl(ctx,'Used by: gRPC, Java RMI, XML-RPC, Thrift',W/2,H*.89,rgba(C.muted,.9),9);
+
+    if(pt%55===0) pkts.push({x1:caller.x+25,y1:ry1,x2:callee.x-25,y2:ry1,t:0,col:C.green,lb:'call()'});
+    if(pt%55===28) pkts.push({x1:callee.x-25,y1:ry2,x2:caller.x+25,y2:ry2,t:0,col:C.red,lb:'return'});
+    drawNode(ctx,caller.x,caller.y,22,C.blue,'Caller');
+    drawNode(ctx,callee.x,callee.y,22,C.blue,'Callee');
+  }
+
+  /* ─ MODE 2: Message Queue ─ */
+  function drawQueue(){
+    const prod={x:W*.14,y:H*.47}, cons={x:W*.86,y:H*.47};
+    const qx=W*.5, qy=H*.47, qw=90, qh=42;
+
+    // queue box
+    box(ctx,qx-qw/2,qy-qh/2,qw,qh,C.yellow,.09,.5,2);
+    // queued msgs inside
+    for(let i=0;i<4;i++){
+      const ox=qx-qw/2+6+i*20;
+      ctx.fillStyle=rgba(C.yellow,.2+(Math.sin(t*2+i)*.1));
+      ctx.fillRect(ox,qy-12,16,24);
+      ctx.strokeStyle=rgba(C.yellow,.4); ctx.lineWidth=.8; ctx.strokeRect(ox,qy-12,16,24);
+    }
+    lbl(ctx,'QUEUE',qx,qy+qh/2+14,rgba(C.yellow,.75),10);
+
+    // arrows
+    drawLink(ctx,prod.x+24,prod.y,qx-qw/2,qy,C.green,.4,2);
+    drawArrow(ctx,prod.x+24,prod.y,qx-qw/2,qy,C.green);
+    drawLink(ctx,qx+qw/2,qy,cons.x-24,cons.y,C.green,.4,2);
+    drawArrow(ctx,qx+qw/2,qy,cons.x-24,cons.y,C.green);
+
+    lbl(ctx,'enqueue(msg)',W*.33,H*.38,rgba(C.green,.65),10);
+    lbl(ctx,'dequeue()',W*.68,H*.38,rgba(C.green,.65),10);
+
+    // time annotations
+    box(ctx,W*.07,H*.32,W*.14,H*.08,C.muted,.06,.2);
+    lbl(ctx,'Time: T1',W*.14,H*.37,rgba(C.muted,.8),9);
+    box(ctx,W*.79,H*.32,W*.14,H*.08,C.muted,.06,.2);
+    lbl(ctx,'Time: T2',W*.86,H*.37,rgba(C.muted,.8),9);
+    lbl(ctx,'T2 can be much later than T1 — fully async!',W/2,H*.62,rgba(C.yellow,.7),10);
+
+    box(ctx,W*.08,H*.69,W*.84,H*.22,C.muted,.04,.15);
+    lbl(ctx,'Producer and Consumer are DECOUPLED in time and space',W/2,H*.74,rgba(C.yellow,.75),10);
+    lbl(ctx,'Producer does NOT wait — continues immediately after enqueue',W/2,H*.81,rgba(C.green,.65),10);
+    lbl(ctx,'Used by: Apache Kafka, RabbitMQ, AWS SQS, ActiveMQ',W/2,H*.88,rgba(C.muted,.9),9);
+
+    if(pt%38===0) pkts.push({x1:prod.x+24,y1:prod.y,x2:qx-qw/2,y2:qy,t:0,col:C.green,lb:'msg'});
+    if(pt%48===0) pkts.push({x1:qx+qw/2,y1:qy,x2:cons.x-24,y2:cons.y,t:0,col:C.yellow,lb:'msg'});
+    drawNode(ctx,prod.x,prod.y,20,C.blue,'Producer');
+    drawNode(ctx,cons.x,cons.y,20,C.blue,'Consumer');
+  }
+
+  /* ─ MODE 3: Pub / Sub ─ */
+  function drawPubSub(){
+    const pub={x:W*.14,y:H*.44};
+    const broker={x:W*.5,y:H*.44};
+    const bw=72,bh=42;
+    const subs=[{x:W*.86,y:H*.22,lbl:'Sub A\n(topic: news)'},{x:W*.86,y:H*.44,lbl:'Sub B\n(topic: news)'},{x:W*.86,y:H*.66,lbl:'Sub C\n(topic: news)'}];
+
+    // broker box
+    box(ctx,broker.x-bw/2,broker.y-bh/2,bw,bh,C.orange,.1,.5,2);
+    lbl(ctx,'BROKER',broker.x,broker.y+bh/2+14,rgba(C.orange,.75),10);
+
+    // pub → broker
+    drawLink(ctx,pub.x+24,pub.y,broker.x-bw/2,broker.y,C.green,.45,2);
+    drawArrow(ctx,pub.x+24,pub.y,broker.x-bw/2,broker.y,C.green);
+    lbl(ctx,'publish("news", data)',W*.32,H*.35,rgba(C.green,.65),9);
+
+    // broker → subs (fan-out)
+    subs.forEach(s=>{
+      drawLink(ctx,broker.x+bw/2,broker.y,s.x-22,s.y,C.orange,.4,1.5);
+      drawArrow(ctx,broker.x+bw/2,broker.y,s.x-22,s.y,C.orange);
+    });
+    lbl(ctx,'broadcast to all subscribers',W*.7,H*.33,rgba(C.orange,.55),9);
+
+    box(ctx,W*.08,H*.77,W*.84,H*.15,C.muted,.04,.15);
+    lbl(ctx,'Publisher has NO knowledge of who is subscribed',W/2,H*.82,rgba(C.orange,.75),10);
+    lbl(ctx,'Subscribers register for topics — easy to add new consumers',W/2,H*.88,rgba(C.green,.65),9);
+
+    if(pt%55===0) pkts.push({x1:pub.x+24,y1:pub.y,x2:broker.x-bw/2,y2:broker.y,t:0,col:C.green,lb:'event'});
+    if(pt%55===22) subs.forEach(s=>pkts.push({x1:broker.x+bw/2,y1:broker.y,x2:s.x-22,y2:s.y,t:0,col:C.orange,lb:'event'}));
+
+    drawNode(ctx,pub.x,pub.y,20,C.blue,'Publisher');
+    subs.forEach(s=>drawNode(ctx,s.x,s.y,16,C.blue,s.lbl.split('\n')[0]));
+    // topic labels
+    subs.forEach(s=>lbl(ctx,'topic: "news"',s.x+4,s.y+28,rgba(C.muted,.7),8));
+  }
+
+  /* Mode title bar */
+  const titles=['Direct Message Passing','Remote Procedure Call (RPC)','Asynchronous Message Queue','Publish / Subscribe'];
+  const tcolors=[C.green,C.green,C.yellow,C.orange];
+
+  function fr(){
+    ctx.clearRect(0,0,W,H); t+=.01; pt++;
+    // auto-advance
+    autoT++;
+    if(autoT>380){
+      autoT=0; ipcMode=(ipcMode+1)%4; pkts=[];
+      document.querySelectorAll('.ipc-tab').forEach((b,i)=>b.classList.toggle('active',i===ipcMode));
+    }
+
+    // title
+    box(ctx,W/2-180,H*.05,360,28,tcolors[ipcMode],.08,.22);
+    lbl(ctx,titles[ipcMode],W/2,H*.05+18,rgba(tcolors[ipcMode],.95),12);
+
+    if(ipcMode===0) drawDirect();
+    else if(ipcMode===1) drawRPC();
+    else if(ipcMode===2) drawQueue();
+    else drawPubSub();
+
+    // draw packets
+    pkts.forEach(p=>{
+      p.t+=.016;
+      drawPacket(ctx,p.x1,p.y1,p.x2,p.y2,Math.min(p.t,1),p.col,5);
+      const px=lerp(p.x1,p.x2,Math.min(p.t,1)), py=lerp(p.y1,p.y2,Math.min(p.t,1));
+      lbl(ctx,p.lb,px,py-11,rgba(p.col,.9),9);
+    });
+    for(let i=pkts.length-1;i>=0;i--) if(pkts[i].t>=1) pkts.splice(i,1);
+
+    requestAnimationFrame(fr);
+  }
+  fr();
+
+  // wire tab buttons
+  document.querySelectorAll('.ipc-tab').forEach(btn=>{
+    btn.addEventListener('click',()=>{
+      document.querySelectorAll('.ipc-tab').forEach(b=>b.classList.remove('active'));
+      btn.classList.add('active');
+      window._setIpcMode(+btn.dataset.mode);
+    });
+  });
+})();
+
+/* ═══════════════════════════════════════════
+   SECTION C — SYNCHRONIZATION
+═══════════════════════════════════════════ */
+(function(){
+  const{canvas,ctx,W,H}=initCanvas('c-sync');
+  let t=0,phase=0,pt=0;
+  const dur=[100,90,100,80];
+  const res={x:W/2,y:H*.48};
+  const procs=Array.from({length:5},(_,i)=>({
+    x:W/2+Math.cos(i/5*Math.PI*2-Math.PI/2)*W*.34,
+    y:H*.48+Math.sin(i/5*Math.PI*2-Math.PI/2)*H*.36,
+    label:`P${i}`, clk:i*2
+  }));
+  const LDR=2, arrows=[];
+  let at=0;
+
+  function fr(){
+    ctx.clearRect(0,0,W,H); t+=.01; pt++;
+    if(pt>=dur[phase]){pt=0;phase=(phase+1)%4;}
+
+    procs.forEach((p,i)=>{
+      const isLdr=i===LDR&&phase!==3;
+      drawLink(ctx,p.x,p.y,res.x,res.y,
+        isLdr&&phase===1?C.orange:C.muted,
+        isLdr&&phase===1?.5:.15,
+        isLdr&&phase===1?2:1);
+    });
+
+    if(phase===0||phase===1){at++; if(at%22===0)arrows.push({from:Math.floor(Math.random()*5),t:0});}
+    arrows.forEach(a=>{
+      a.t+=.02; const p=procs[a.from];
+      drawPacket(ctx,p.x,p.y,res.x,res.y,Math.min(a.t,1),a.from===LDR&&(phase===1||phase===2)?C.orange:C.green,5);
+    });
+    for(let i=arrows.length-1;i>=0;i--) if(arrows[i].t>=1) arrows.splice(i,1);
+
+    const rp=phase===1?(Math.sin(t*5)+1)*.5:0;
+    const rc=phase===3?C.green:phase===1?C.orange:C.blue;
+    drawNode(ctx,res.x,res.y,26,rc,phase===1?'🔒 LOCKED':phase===3?'🔓 FREE':'Resource',rp);
+
+    procs.forEach((p,i)=>{
+      p.clk+=.01;
+      const isLdr=i===LDR&&phase!==3;
+      drawNode(ctx,p.x,p.y,16,isLdr?C.orange:C.blue,p.label,isLdr&&phase===1?rp:0);
+      lbl(ctx,`T=${Math.floor(p.clk)}`,p.x,p.y-28,rgba(C.orange,.65),9);
+      if(isLdr) lbl(ctx,'★ LEADER',p.x,p.y+33,rgba(C.orange,.85),9);
+    });
+
+    const pls=['① ALL REQUESTING ACCESS','② LEADER ACQUIRES LOCK','③ CRITICAL SECTION — LEADER HAS ACCESS','④ LOCK RELEASED — NEXT ROUND'];
+    const pc=[C.blue,C.orange,C.green,C.muted];
+    box(ctx,W/2-185,H*.07,370,26,pc[phase],.1,.25);
+    lbl(ctx,pls[phase],W/2,H*.07+17,rgba(pc[phase],.95),11);
+    requestAnimationFrame(fr);
+  }
+  fr();
+})();
+
+/* ═══════════════════════════════════════════
+   SECTION D — FAULT TOLERANCE
+═══════════════════════════════════════════ */
+(function(){
+  const{canvas,ctx,W,H}=initCanvas('c-fault');
+  let t=0,phase=0,pt=0;
+  const dur=[130,90,130,80];
+  const nodes=[
+    {x:W*.2,y:H*.28,label:'N1',alive:true,load:.4},
+    {x:W*.5,y:H*.18,label:'N2',alive:true,load:.6},
+    {x:W*.8,y:H*.28,label:'N3',alive:true,load:.3},
+    {x:W*.22,y:H*.68,label:'N4',alive:true,load:.5},
+    {x:W*.78,y:H*.68,label:'N5',alive:true,load:.4},
+    {x:W*.5,y:H*.52,label:'N6',alive:true,load:.7},
+  ];
+  const FAIL=1;
+  const edges=[[0,1],[0,2],[1,2],[1,5],[2,4],[3,5],[4,5],[0,5],[2,5],[0,3]];
+  const pkts=[]; let ptt=0;
+
+  function fr(){
+    ctx.clearRect(0,0,W,H); t+=.01; pt++;
+    if(pt>=dur[phase]){pt=0;phase=(phase+1)%4;}
+    const fail=nodes[FAIL];
+    if(phase<=1)fail.alive=true;
+    if(phase===1&&pt>45)fail.alive=false;
+    if(phase===3)fail.alive=true;
+
+    edges.forEach(([a,b])=>{
+      const alive=nodes[a].alive&&nodes[b].alive;
+      drawLink(ctx,nodes[a].x,nodes[a].y,nodes[b].x,nodes[b].y,alive?C.blue:C.muted,alive?.22:.07,1);
+    });
+
+    ptt++;
+    if(ptt%28===0&&phase!==1){
+      const alive=nodes.filter(n=>n.alive);
+      if(alive.length>1){
+        const a=alive[Math.floor(Math.random()*alive.length)];
+        let b;do{b=alive[Math.floor(Math.random()*alive.length)];}while(b===a);
+        pkts.push({x1:a.x,y1:a.y,x2:b.x,y2:b.y,t:0,col:phase===2?C.green:C.blue});
+      }
+    }
+    pkts.forEach(p=>{p.t+=.018; drawPacket(ctx,p.x1,p.y1,p.x2,p.y2,Math.min(p.t,1),p.col,5);});
+    for(let i=pkts.length-1;i>=0;i--) if(pkts[i].t>=1)pkts.splice(i,1);
+
+    nodes.forEach((n,i)=>{
+      if(!n.alive){
+        ctx.beginPath();ctx.arc(n.x,n.y,20,0,Math.PI*2);
+        ctx.strokeStyle=C.red;ctx.lineWidth=2;ctx.stroke();
+        ctx.fillStyle=rgba(C.red,.12);ctx.fill();
+        ctx.font='18px sans-serif';ctx.textAlign='center';ctx.fillStyle=C.red;
+        ctx.fillText('✕',n.x,n.y+6);
+        lbl(ctx,n.label,n.x,n.y+36,rgba(C.red,.8),11);
+        lbl(ctx,'FAILED',n.x,n.y+50,rgba(C.red,.6),9);
+        return;
+      }
+      const pulse=phase===2&&i!==FAIL?(Math.sin(t*4+i)+1)*.5:0;
+      drawNode(ctx,n.x,n.y,16,phase===2&&i!==FAIL?C.green:C.blue,n.label,pulse);
+      const bw=30,bh=5,load=phase===2&&i!==FAIL?Math.min(n.load+.22,1):n.load;
+      ctx.fillStyle=rgba(C.muted,.5);ctx.fillRect(n.x-bw/2,n.y-30,bw,bh);
+      ctx.fillStyle=load>.75?C.orange:C.green;ctx.fillRect(n.x-bw/2,n.y-30,bw*load,bh);
+    });
+
+    if(phase===0||phase===2||phase===3){
+      const hb=(Math.sin(t*8)+1)*.5;
+      nodes.filter(n=>n.alive).forEach(n=>{
+        ctx.beginPath();ctx.arc(n.x,n.y,20+hb*5,0,Math.PI*2);
+        ctx.strokeStyle=rgba(C.blue,.04+hb*.08);ctx.lineWidth=1;ctx.stroke();
+      });
+    }
+
+    const pl=['① SYSTEM HEALTHY — HEARTBEATS NORMAL','② NODE FAILURE DETECTED!','③ TASKS REDISTRIBUTED TO LIVE NODES','④ NODE RECOVERING & REJOINING'];
+    const pc=[C.blue,C.red,C.green,C.yellow];
+    box(ctx,W/2-195,H*.07,390,26,pc[phase],.1,.25);
+    lbl(ctx,pl[phase],W/2,H*.07+17,rgba(pc[phase],.95),11);
+    requestAnimationFrame(fr);
+  }
+  fr();
+})();
+
+/* ═══════════════════════════════════════════
+   SECTION E — DISTRIBUTED STORAGE
+═══════════════════════════════════════════ */
+(function(){
+  const{canvas,ctx,W,H}=initCanvas('c-store');
+  let t=0;
+  const snodes=[{x:W*.15,y:H*.74,label:'Node 1'},{x:W*.38,y:H*.84,label:'Node 2'},{x:W*.62,y:H*.84,label:'Node 3'},{x:W*.85,y:H*.74,label:'Node 4'}];
+  const nn={x:W*.5,y:H*.26};
+  const blocks=[{label:'Block A',color:C.purple},{label:'Block B',color:'#a78bfa'},{label:'Block C',color:'#e879f9'}];
+  const rpkts=[]; let ptt=0;
+
+  function cyl(x,y,label,pulse=0){
+    const rx=26,ry=9,h=40;
+    ctx.beginPath();ctx.ellipse(x,y-h/2,rx,ry,0,0,Math.PI*2);
+    ctx.fillStyle=rgba(C.purple,.12+pulse*.12);ctx.strokeStyle=C.purple;ctx.lineWidth=1.6+pulse*2;
+    ctx.fill();ctx.stroke();
+    ctx.fillStyle=rgba(C.purple,.07+pulse*.07);ctx.fillRect(x-rx,y-h/2,rx*2,h);
+    ctx.beginPath();ctx.moveTo(x-rx,y-h/2);ctx.lineTo(x-rx,y+h/2);ctx.moveTo(x+rx,y-h/2);ctx.lineTo(x+rx,y+h/2);
+    ctx.strokeStyle=C.purple;ctx.lineWidth=1.6;ctx.stroke();
+    ctx.beginPath();ctx.ellipse(x,y+h/2,rx,ry,0,0,Math.PI*2);
+    ctx.fillStyle=rgba(C.purple,.2);ctx.fill();ctx.stroke();
+    if(pulse>.1){ctx.beginPath();ctx.ellipse(x,y,rx+12,ry+20,0,0,Math.PI*2);ctx.strokeStyle=rgba(C.purple,pulse*.28);ctx.lineWidth=2;ctx.stroke();}
+    lbl(ctx,label,x,y+h/2+18,rgba(C.purple,.85),11);
+  }
+
+  function fr(){
+    ctx.clearRect(0,0,W,H); t+=.01;
+    snodes.forEach(n=>drawLink(ctx,nn.x,nn.y,n.x,n.y,C.purple,.28,1.5));
+    for(let i=0;i<snodes.length;i++)for(let j=i+1;j<snodes.length;j++)
+      drawLink(ctx,snodes[i].x,snodes[i].y,snodes[j].x,snodes[j].y,C.purple,.12,1);
+
+    ptt++;
+    if(ptt%32===0){
+      const from=Math.floor(Math.random()*4),to=(from+1+Math.floor(Math.random()*3))%4;
+      const blk=blocks[Math.floor(Math.random()*3)];
+      rpkts.push({from,to,t:0,color:blk.color,label:blk.label});
+    }
+    if(ptt%55===0){
+      const to=Math.floor(Math.random()*4);
+      rpkts.push({x1:nn.x,y1:nn.y,x2:snodes[to].x,y2:snodes[to].y,t:0,color:C.green,label:'WRITE'});
+    }
+    rpkts.forEach(p=>{
+      p.t+=.015;
+      const x1=p.x1!==undefined?p.x1:snodes[p.from].x, y1=p.y1!==undefined?p.y1:snodes[p.from].y;
+      const x2=p.x2!==undefined?p.x2:snodes[p.to].x, y2=p.y2!==undefined?p.y2:snodes[p.to].y;
+      drawPacket(ctx,x1,y1,x2,y2,Math.min(p.t,1),p.color,7);
+      lbl(ctx,p.label,lerp(x1,x2,Math.min(p.t,1)),lerp(y1,y2,Math.min(p.t,1))-12,rgba(p.color,.9),9);
+    });
+    for(let i=rpkts.length-1;i>=0;i--) if(rpkts[i].t>=1)rpkts.splice(i,1);
+
+    const pulses=snodes.map((_,i)=>(Math.sin(t*3+i*1.5)+1)*.25);
+    snodes.forEach((n,i)=>cyl(n.x,n.y,n.label,pulses[i]));
+    drawNode(ctx,nn.x,nn.y,24,C.green,'NameNode',(Math.sin(t*2)+1)*.5);
+    lbl(ctx,'(Metadata & Block Map)',nn.x,nn.y+46,rgba(C.green,.55),10);
+
+    box(ctx,W/2-200,H*.08,400,22,C.purple,.07,.2);
+    lbl(ctx,'Each file → 128MB blocks  ·  Replication Factor: 3×',W/2,H*.08+14,rgba(C.purple,.75),10);
+
+    blocks.forEach((b,i)=>{
+      ctx.fillStyle=rgba(b.color,.9);ctx.fillRect(16,16+i*22,14,12);
+      ctx.strokeStyle=rgba(b.color,.5);ctx.lineWidth=.8;ctx.strokeRect(16,16+i*22,14,12);
+      lbl(ctx,b.label,36,26+i*22,rgba(b.color,.8),9,'left');
+    });
+    requestAnimationFrame(fr);
+  }
+  fr();
+})();
+
+/* ═══════════════════════════════════════════
+   NAV SWITCHING
+═══════════════════════════════════════════ */
+document.querySelectorAll('#nav button').forEach(btn=>{
+  btn.addEventListener('click',()=>{
+    document.querySelectorAll('#nav button').forEach(b=>b.classList.remove('active'));
+    btn.classList.add('active');
+    const sec=btn.dataset.sec;
+    document.querySelectorAll('.section').forEach(s=>s.classList.remove('active'));
+    document.getElementById('sec-'+sec).classList.add('active');
+    const c=document.getElementById('c-'+sec);
+    if(c){c.width=c.parentElement.clientWidth||640;c.height=c.parentElement.clientHeight||580;}
+  });
+});
+
+window.addEventListener('resize',()=>{
+  ['c-central','c-dist','c-arch','c-ipc','c-sync','c-fault','c-store'].forEach(id=>{
+    const c=document.getElementById(id);
+    if(c&&c.parentElement){c.width=c.parentElement.clientWidth||640;c.height=c.parentElement.clientHeight||580;}
+  });
+});
+</script>
+</body>
+</html>
